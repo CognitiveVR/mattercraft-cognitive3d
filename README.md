@@ -14,4 +14,4 @@ This package seamlessly integrates the [Cognitive3D WebXR SDK](https://github.co
 
 ### 1. Install via NPM
 
-In the addons and dependencies of Mattercraft, search for `@cognitive3d/three-mattercraft`
+In the add-ons and dependencies of Mattercraft, search for `@cognitive3d/three-mattercraft`
