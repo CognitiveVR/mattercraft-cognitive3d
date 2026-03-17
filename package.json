@@ -1,0 +1,50 @@
+{
+  "name": "@cognitive3d/three-mattercraft",
+  "version": "0.1.0",
+  "description": "Seamlessly integrates the Cognitive3D WebXR SDK into Zappar's Mattercraft platform.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "zexports": [
+    "./lib/**/*"
+  ],
+  "directories": {
+    "lib": "lib"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/**/*"
+  ],
+  "scripts": {
+    "build": "rimraf lib && tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@cognitive3d/analytics": "^2.6.0"
+  },
+  "peerDependencies": {
+    "@zcomponent/core": "^1.0.0",
+    "@zcomponent/html": "1.x",
+    "@zcomponent/three": "^1.0.0",
+    "@zcomponent/three-webxr": "^1.1.2",
+    "three": "0.150.1 - 0.164.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.164.0",
+    "@zcomponent/core": "^1.28.0",
+    "@zcomponent/three": "^1.37.0",
+    "@zcomponent/three-webxr": "^1.3.2",
+    "rimraf": "^6.1.3",
+    "three": "0.164.0",
+    "typescript": "4.9.4"
+  },
+  "overrides": {
+    "three": "0.164.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CognitiveVR/mattercraft-cognitive3d"
+  },
+  "author": "Cognitive3D support@cognitive3d.com"
+}
