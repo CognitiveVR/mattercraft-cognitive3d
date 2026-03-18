@@ -30,7 +30,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       
-      - name: Build SDK
+      - name: Build Project
         run: npm run build
       
       # Development branch: version with commit SHA and publish with dev tag
