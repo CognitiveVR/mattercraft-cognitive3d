@@ -37,8 +37,6 @@ export interface Cognitive3DDynamicObjectConstructionProps {
 export class Cognitive3DDynamicObject extends Behavior<Component> implements IDynamicObjectBehavior {
     
     private _isInitialized = false;
-    private _originalY: number = 0;
-    private _movePhase: number = 0;
     private _lastTrackedUUID: string | null = null;
 
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DDynamicObjectConstructionProps) {
@@ -73,9 +71,6 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
                 obj.userData.modelId = this.constructorProps.c3dMeshName || fallbackName;
                 obj.userData.positionThreshold = this.constructorProps.positionThreshold;
                 obj.userData.rotationThreshold = this.constructorProps.rotationThreshold;
-                
-                this._originalY = obj.position.y;
-                this._movePhase = Math.random() * Math.PI * 2;
 
                 if (this.constructorProps.c3dMeshName) {
                     obj.name = this.constructorProps.c3dMeshName;
