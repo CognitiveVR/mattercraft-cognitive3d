@@ -4,8 +4,7 @@ import { ThreeContext, ThreeSceneContext } from "@zcomponent/three";
 import * as THREE from "three";
 import { EditorContext } from "@zcomponent/three/lib/editorcontext";
 
-import C3D from "@cognitive3d/analytics/lib/c3d.umd.js";
-import C3DThreeAdapter from "@cognitive3d/analytics/lib/c3d-threejs-adapter.umd.js";
+import C3D from "@cognitive3d/analytics/lib/c3d-bundle-threejs.umd.js";
 
 export interface Cognitive3DConstructionProps {
     /** @zui */
@@ -33,12 +32,11 @@ export class Cognitive3D extends Behavior<Component> {
     public static instance: Cognitive3D | null = null;
     public trackedBehaviors: Set<IDynamicObjectBehavior> = new Set(); 
 
-    private c3d: C3D | null = null;
-    private c3dAdapter: C3DThreeAdapter | null = null;
+    private c3d: any | null = null;
+    private c3dAdapter: any = null;
     private xrContext: XRContext;
     private threeContext: ThreeContext;
     private sceneContext: ThreeSceneContext;
-    private _lastGazeTime: number = 0; 
 
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DConstructionProps) {
         super(contextManager, instance);
@@ -64,7 +62,7 @@ export class Cognitive3D extends Behavior<Component> {
                 }
             });
 
-            this.c3dAdapter = new C3DThreeAdapter(this.c3d);
+            this.c3dAdapter = new (C3D as any).Adapter(this.c3d);
 
             if (this.constructorProps.sceneName) {
                 this.c3d.setScene(this.constructorProps.sceneName);
@@ -79,39 +77,8 @@ export class Cognitive3D extends Behavior<Component> {
             }
 
             this.register(useOnBeforeRender(this.contextManager), () => {
-                // 1. Keep the adapter updating so dynamic objects and FPS tracking work
                 if (this.c3dAdapter) {
                     this.c3dAdapter.update();
-                }
-
-                // 2. BYPASS THE ADAPTER: Manually calculate Engine Gaze to avoid the UMD singleton bug
-                const trackingCamera = this.sceneContext.activeCamera.value;
-                
-                if (this.c3d && trackingCamera && this.c3d.isSessionActive()) {
-                    const now = performance.now();
-                    
-                    // Only run 10 times a second (100ms) to save performance
-                    if (now - this._lastGazeTime >= 100) {
-                        this._lastGazeTime = now;
-
-                        const worldPos = new THREE.Vector3();
-                        const worldQuat = new THREE.Quaternion();
-                        trackingCamera.getWorldPosition(worldPos);
-                        trackingCamera.getWorldQuaternion(worldQuat);
-
-                        // Fetch the raycast hit using the adapter's interactable list
-                        let gazeHitData = null;
-                        if (this.c3d.gazeRaycaster) {
-                            gazeHitData = this.c3d.gazeRaycaster();
-                        }
-
-                        // Push the properly formatted data directly into the core tracker
-                        this.c3d.gaze.recordGaze(
-                            [worldPos.x, worldPos.y, -worldPos.z],
-                            [worldQuat.x, worldQuat.y, -worldQuat.z, -worldQuat.w],
-                            gazeHitData
-                        );
-                    }
                 }
             });
             
