@@ -15,6 +15,12 @@ export interface Cognitive3DConstructionProps {
     sceneName: string;
     /** @zui */
     sceneVersion?: string;
+    /**
+     * @zui
+     * @zlabel Toggle Export
+     * @zdefault false
+     */
+    enableExport: boolean;
 }
 
 // Breaking the Circular Dependency: Define what the Manager expects
@@ -224,6 +230,10 @@ export class Cognitive3D extends Behavior<Component> {
     }
 
     private handleKeyDown = (event: KeyboardEvent) => {
+        if (!this.constructorProps.enableExport) {
+            return;
+        }
+        
         if (event.shiftKey && (event.key === 'E' || event.key === 'e')) {
             this.exportScene();
         }
