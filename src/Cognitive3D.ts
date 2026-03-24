@@ -36,7 +36,8 @@ export interface IDynamicObjectBehavior {
 export class Cognitive3D extends Behavior<Component> {
 
     public static instance: Cognitive3D | null = null;
-    public trackedBehaviors: Set<IDynamicObjectBehavior> = new Set(); 
+    public static pendingRegistrations: IDynamicObjectBehavior[] = [];
+    public trackedBehaviors: Set<IDynamicObjectBehavior> = new Set();
 
     private c3d: any | null = null;
     private c3dAdapter: any = null;
@@ -49,6 +50,10 @@ export class Cognitive3D extends Behavior<Component> {
 
         // Assign Singleton
         Cognitive3D.instance = this;
+
+        // Pick up any behaviors constructed before the manager was ready
+        Cognitive3D.pendingRegistrations.forEach(b => this.trackedBehaviors.add(b));
+        Cognitive3D.pendingRegistrations = [];
 
         this.threeContext = this.contextManager.get(ThreeContext);
         this.sceneContext = this.contextManager.get(ThreeSceneContext);
