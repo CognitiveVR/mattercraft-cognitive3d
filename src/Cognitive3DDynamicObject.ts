@@ -53,6 +53,11 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
             setTimeout(() => {
                 Cognitive3D.instance?.registerDynamicObject(this);
             }, 100);
+        } else {
+            // Manager not ready yet; queue for pickup on Cognitive3D initialization
+            if (!Cognitive3D.pendingRegistrations.includes(this)) {
+                Cognitive3D.pendingRegistrations.push(this);
+            }
         }
     }
 
@@ -108,6 +113,10 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
     }
 
     public override dispose() {
+        // Remove from pending queue if not yet picked up by the manager
+        const idx = Cognitive3D.pendingRegistrations.indexOf(this);
+        if (idx !== -1) Cognitive3D.pendingRegistrations.splice(idx, 1);
+
         // Remove this specific instance from the manager's registry to prevent memory leaks
         if (Cognitive3D.instance) {
             Cognitive3D.instance.unregisterDynamicObject(this);
