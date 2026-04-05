@@ -87,6 +87,7 @@ export class Cognitive3D extends Behavior<Component> {
                 });
             }
 
+            // @ts-ignore: TypeScript overload resolution fails for Event<[number]> but this is correct at runtime
             this.register(useOnBeforeRender(this.contextManager), () => {
                 if (this.c3dAdapter) {
                     this.c3dAdapter.update();

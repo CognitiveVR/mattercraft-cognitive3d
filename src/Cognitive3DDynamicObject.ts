@@ -41,7 +41,7 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
 
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DDynamicObjectConstructionProps) {
         super(contextManager, instance);
-        
+        // @ts-ignore: TypeScript overload resolution fails for Event<[number]> but this is correct at runtime
         this.register(useOnBeforeRender(this.contextManager), () => this.onUpdate());
 
         this.tryRegisterWithManager();
