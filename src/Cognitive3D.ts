@@ -45,6 +45,12 @@ export class Cognitive3D extends Behavior<Component> {
     private threeContext: ThreeContext;
     private sceneContext: ThreeSceneContext;
 
+    // Public getter so Cognitive3DDynamicObject can read the scene name
+    // for deterministic ID generation without accessing protected constructorProps.
+    public get sceneName(): string {
+        return this.constructorProps.sceneName;
+    }
+
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DConstructionProps) {
         super(contextManager, instance);
 
@@ -122,13 +128,15 @@ export class Cognitive3D extends Behavior<Component> {
         const objectName = meshName;
         const customId = props.c3dCustomId || groupObj.uuid;
 
+        // scene.updateMatrixWorld(true) is called once before the registration
+        // loop in handleSessionChange, so the full scene is already up to date.
+        // This lighter per-object call is sufficient here.
         groupObj.updateWorldMatrix(true, false);
         const worldPos = new THREE.Vector3();
         const worldQuat = new THREE.Quaternion();
         const worldScale = new THREE.Vector3();
         groupObj.matrixWorld.decompose(worldPos, worldQuat, worldScale);
 
-        // Pass the world coordinates (and add the scale parameter!)
         const runtimeId = this.c3d.dynamicObject.registerObjectCustomId(
             objectName,
             meshName,
@@ -148,8 +156,6 @@ export class Cognitive3D extends Behavior<Component> {
         if (typeof this.c3dAdapter.addInteractable === 'function') {
             let raycastTarget: THREE.Object3D = groupObj;
 
-            // If the tracked Mattercraft object is an empty AttachmentPoint, 
-            // search the scene for the actual visual GLTF node with the same name.
             if (!this.hasGeometry(groupObj)) {
                 const scene = this.sceneContext.scene;
                 scene.traverse((node) => {
@@ -163,12 +169,8 @@ export class Cognitive3D extends Behavior<Component> {
                 }
             }
 
-            // Apply the tracking ID to the root of the visual object
             raycastTarget.userData.c3dId = runtimeId;
-            
-            // Pass the target to the adapter so it recursively raycasts all its visual children
             this.c3dAdapter.addInteractable(raycastTarget);
-            
             console.log(`Cognitive3D: Raycasting enabled for full object ${objectName}`);
         }
 
@@ -218,9 +220,17 @@ export class Cognitive3D extends Behavior<Component> {
                     this.c3dAdapter?.startTracking(renderer, trackingCamera as THREE.Camera, scene);
                 }
 
-                // Delay initial tracking snapshot by 60ms. 
-                // This gives Mattercraft time to fully sync AttachmentPoints to their GLTF bones
                 setTimeout(() => {
+                    // FIX: Call updateMatrixWorld once before the loop so all animated
+                    // bone transforms (e.g. forklift forks/hydraulics) reflect their actual
+                    // current pose rather than the GLTF bind/rest pose. The AnimationMixer
+                    // writes bone transforms during the render loop, which hasn't run yet
+                    // inside this setTimeout — a single full scene update corrects this.
+                    // Calling it inside registerDynamicObject on every iteration instead
+                    // disrupts Mattercraft's AttachmentPoint management and causes subsequent
+                    // objects to return null from getTrackedObject().
+                    this.sceneContext.scene.updateMatrixWorld(true);
+
                     let initCount = 0;
                     this.trackedBehaviors.forEach(behavior => {
                          this.registerDynamicObject(behavior);
@@ -264,7 +274,6 @@ export class Cognitive3D extends Behavior<Component> {
 
         console.log(`Cognitive3D: Checking ${this.trackedBehaviors.size} Dynamic Objects for export...`);
         
-        // 1. Gather all dynamic object export names to identify sub-objects
         const dynamicNames = new Set<string>();
         for (const behavior of Array.from(this.trackedBehaviors)) {
             const wrapper = behavior.getTrackedObject();
@@ -298,13 +307,10 @@ export class Cognitive3D extends Behavior<Component> {
 
                 let objToExport = wrapper.clone();
 
-                // If the tracked object is an AttachmentPoint (no geometry), 
-                // find the actual visual geometry in the scene with the same name.
                 if (!this.hasGeometry(objToExport)) {
                     const scene = this.sceneContext.scene;
                     let foundVisualNode: THREE.Object3D | null = null;
                     scene.traverse((node) => {
-                        // Find the node in the GLTF that matches the AttachmentPoint's target name
                         if (node.name === exportName && this.hasGeometry(node)) {
                             foundVisualNode = node;
                         }
@@ -318,7 +324,6 @@ export class Cognitive3D extends Behavior<Component> {
                     }
                 }
 
-                // Strip out nested dynamic objects by their names
                 const nodesToRemove: THREE.Object3D[] = [];
                 objToExport.traverse((node) => {
                     if (node === objToExport) return;
@@ -327,20 +332,17 @@ export class Cognitive3D extends Behavior<Component> {
                     }
                 });
 
-                // Safely remove the identified sub-objects so they aren't in the parent export
                 nodesToRemove.forEach(node => {
                     if (node.parent) {
                         node.parent.remove(node);
                     }
                 });
 
-                // Normalize transformations so the C3D dashboard gets a clean, centered 1:1 mesh
                 objToExport.position.set(0, 0, 0);
                 objToExport.quaternion.identity();
                 objToExport.scale.set(1, 1, 1);
                 objToExport.updateMatrixWorld(true);
 
-                // Apply the coordinate system fix here before passing to the adapter
                 const exportRoot = new THREE.Group();
                 exportRoot.name = "CoordinateSystemFix";
                 exportRoot.add(objToExport);

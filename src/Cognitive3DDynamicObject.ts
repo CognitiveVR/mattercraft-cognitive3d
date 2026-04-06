@@ -61,6 +61,52 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
         }
     }
 
+    /**
+     * Generates a stable, deterministic ID namespaced by scene name and keyed
+     * on the mesh name. Mesh names must already be unique per tracked object for
+     * the Cognitive3D dashboard to distinguish objects, making them a reliable
+     * stable hash input.
+     *
+     * The parent-chain approach was avoided because Mattercraft AttachmentPoints
+     * frequently have no name on themselves or their ancestors, causing all
+     * unnamed objects to produce the same path string and identical IDs.
+     *
+     * Falls back to obj.uuid when no mesh name is available. This is unique
+     * within a session but not persistent across page reloads.
+     *
+     * The inspector value always takes priority — this only runs when
+     * c3dCustomId is left blank.
+     */
+    private _generateDeterministicId(meshName: string, obj: THREE.Object3D): string {
+        // ES2015-compatible left-pad (String.padStart is ES2017)
+        const pad = (s: string, len: number): string => {
+            while (s.length < len) s = '0' + s;
+            return s;
+        };
+
+        // Namespace by scene name so the same mesh name in different scenes
+        // does not collide on the Cognitive3D dashboard.
+        const sceneName = Cognitive3D.instance?.sceneName ?? 'scene';
+        const uniqueKey = meshName || obj.uuid;
+        const fullKey = sceneName + '::' + uniqueKey;
+
+        // djb2 hash — simple, fast, good distribution for short strings.
+        const djb2 = (input: string): number => {
+            let h = 5381;
+            for (let i = 0; i < input.length; i++) {
+                h = Math.imul((h << 5) + h, 1) + input.charCodeAt(i);
+                h = h | 0;
+            }
+            return h >>> 0;
+        };
+
+        const keyHash  = pad(djb2(fullKey).toString(16), 8);
+        const nameHash = pad(djb2(uniqueKey).toString(16), 4);
+        const keyLen   = pad(fullKey.length.toString(16), 4);
+
+        return 'c3d-' + keyHash + '-' + nameHash + '-' + keyLen;
+    }
+
     public getTrackedObject(): THREE.Object3D | null {
         let obj = this.instance.element as THREE.Object3D;
 
@@ -70,6 +116,36 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
 
         if (obj) {
             if (!this._isInitialized) {
+
+                // STEP 1 — Resolve mesh name first, before anything else.
+                // Auto-populate from the Three.js node name if the inspector
+                // field was left blank.
+                if (!this.constructorProps.c3dMeshName && obj.name) {
+                    this.constructorProps.c3dMeshName = obj.name;
+                }
+
+                // STEP 2 — Apply the mesh name to the Three.js object immediately
+                // so obj.name is correct before the deterministic ID is hashed.
+                // Previously this happened at the bottom of the block, so the hash
+                // ran against an empty obj.name for unnamed AttachmentPoints,
+                // causing all such objects to produce the same ID.
+                if (this.constructorProps.c3dMeshName) {
+                    obj.name = this.constructorProps.c3dMeshName;
+                }
+
+                // STEP 3 — Generate deterministic ID using the now-resolved mesh name.
+                // Only runs when c3dCustomId was left blank in the inspector.
+                if (!this.constructorProps.c3dCustomId) {
+                    const meshNameForId = this.constructorProps.c3dMeshName || obj.name;
+                    this.constructorProps.c3dCustomId = this._generateDeterministicId(meshNameForId, obj);
+                    console.log(
+                        'Cognitive3D: Auto-generated deterministic ID for \'' + meshNameForId + '\': ' +
+                        this.constructorProps.c3dCustomId + '\n' +
+                        '  → To make this permanent and rename-safe, paste this value into the \'Custom ID\' inspector field.'
+                    );
+                }
+
+                // STEP 4 — Set userData now that name and ID are both resolved.
                 const fallbackName = obj.name || "UnnamedObject";
 
                 obj.userData.isDynamic = true;
@@ -80,7 +156,7 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
                 if (this.constructorProps.c3dMeshName) {
                     obj.name = this.constructorProps.c3dMeshName;
                 }
-                
+
                 if (!obj.name) {
                     console.warn(`Cognitive3D: Object with Model '${this.constructorProps.c3dMeshName}' has no name.`);
                 }
