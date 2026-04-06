@@ -4,7 +4,7 @@ import { ThreeContext, ThreeSceneContext } from "@zcomponent/three";
 import * as THREE from "three";
 import { EditorContext } from "@zcomponent/three/lib/editorcontext";
 
-import C3D from "@cognitive3d/analytics/lib/c3d-bundle-threejs.umd.js";
+import C3D from "./vendor/c3d-bundle-threejs.umd.js";
 
 export interface Cognitive3DConstructionProps {
     /** @zui */
@@ -131,7 +131,7 @@ export class Cognitive3D extends Behavior<Component> {
         // scene.updateMatrixWorld(true) is called once before the registration
         // loop in handleSessionChange, so the full scene is already up to date.
         // This lighter per-object call is sufficient here.
-        groupObj.updateWorldMatrix(true, false);
+        groupObj.updateWorldMatrix(true, true);
         const worldPos = new THREE.Vector3();
         const worldQuat = new THREE.Quaternion();
         const worldScale = new THREE.Vector3();
