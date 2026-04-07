@@ -130,7 +130,6 @@ export class Cognitive3D extends Behavior<Component> {
 
         // scene.updateMatrixWorld(true) is called once before the registration
         // loop in handleSessionChange, so the full scene is already up to date.
-        // This lighter per-object call is sufficient here.
         groupObj.updateWorldMatrix(true, true);
         const worldPos = new THREE.Vector3();
         const worldQuat = new THREE.Quaternion();
@@ -252,7 +251,7 @@ export class Cognitive3D extends Behavior<Component> {
                 }
 
                 setTimeout(() => {
-                    // FIX: Call updateMatrixWorld once before the loop so all animated
+                    // NOTE: Call updateMatrixWorld once before the loop so all animated
                     // bone transforms (e.g. forklift forks/hydraulics) reflect their actual
                     // current pose rather than the GLTF bind/rest pose. The AnimationMixer
                     // writes bone transforms during the render loop, which hasn't run yet
