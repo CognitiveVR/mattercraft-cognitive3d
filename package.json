@@ -42,8 +42,7 @@
     "lib": "lib"
   },
   "files": [
-    "lib/**/*",
-    "src/vendor/**/*"
+    "lib/**/*"
   ],
   "scripts": {
     "build": "rimraf lib && node -e \"require('fs').mkdirSync('src/vendor',{recursive:true});require('fs').copyFileSync('node_modules/@cognitive3d/analytics/lib/c3d-bundle-threejs.umd.js','src/vendor/c3d-bundle-threejs.umd.js')\" && tsc && node -e \"require('fs').mkdirSync('lib/vendor',{recursive:true});require('fs').copyFileSync('src/vendor/c3d-bundle-threejs.umd.js','lib/vendor/c3d-bundle-threejs.umd.js')\"",
