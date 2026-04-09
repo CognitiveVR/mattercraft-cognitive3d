@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
     "module": "es2020",
-    "target": "ES2021",
+    "target": "es2015",
+    "lib": ["es2017", "dom"],
     "esModuleInterop": true,
     "strictNullChecks": true,
     "moduleResolution": "node",
+    "allowJs": true,
     "declaration": true,
     "rootDir": "./src",
     "outDir": "./lib",
