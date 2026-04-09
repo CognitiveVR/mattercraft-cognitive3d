@@ -138,7 +138,7 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
                 if (!this.constructorProps.c3dCustomId) {
                     const meshNameForId = this.constructorProps.c3dMeshName || obj.name;
                     this.constructorProps.c3dCustomId = this._generateDeterministicId(meshNameForId, obj);
-                    console.log(
+                    Cognitive3D.debug(
                         'Cognitive3D: Auto-generated deterministic ID for \'' + meshNameForId + '\': ' +
                         this.constructorProps.c3dCustomId + '\n' +
                         '  → To make this permanent and rename-safe, paste this value into the \'Custom ID\' inspector field.'
