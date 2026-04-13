@@ -1,9 +1,12 @@
-import { Component, Behavior, ContextManager, useOnBeforeRender } from "@zcomponent/core";
+import { Component, Behavior, ContextManager, useOnBeforeRender, started } from "@zcomponent/core";
 import * as THREE from "three";
  
 // Import the manager and the interface
 import { Cognitive3D, IDynamicObjectBehavior } from "./Cognitive3D";
- 
+
+// Reusable vector to avoid per-frame allocation in onUpdate()
+const _vec = new THREE.Vector3();
+
 export interface Cognitive3DDynamicObjectConstructionProps {
     /**
      * @zui
@@ -49,10 +52,9 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
  
     private tryRegisterWithManager() {
         if (Cognitive3D.instance) {
-            // Delay slightly to ensure Mattercraft has resolved the new AttachmentPoint's transform
-            setTimeout(() => {
+            started(this.contextManager).then(() => {
                 Cognitive3D.instance?.registerDynamicObject(this);
-            }, 100);
+            });
         } else {
             // Manager not ready yet; queue for pickup on Cognitive3D initialization
             if (!Cognitive3D.pendingRegistrations.includes(this)) {
@@ -169,10 +171,7 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
         const obj = this.getTrackedObject();
         if (!obj) return;
  
-        obj.updateMatrixWorld(true);
- 
-        const vec = new THREE.Vector3();
-        obj.getWorldPosition(vec);
+        obj.getWorldPosition(_vec);
  
         if (obj.uuid !== this._lastTrackedUUID) {
             this._lastTrackedUUID = obj.uuid;
