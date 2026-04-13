@@ -290,14 +290,6 @@ export class Cognitive3D extends Behavior<Component> {
                 }
 
                 started(this.contextManager).then(() => {
-                    // NOTE: Call updateMatrixWorld once before the loop so all animated
-                    // bone transforms (e.g. forklift forks/hydraulics) reflect their actual
-                    // current pose rather than the GLTF bind/rest pose. The AnimationMixer
-                    // writes bone transforms during the render loop, which hasn't run yet
-                    // at this point — a single full scene update corrects this.
-                    // Calling it inside registerDynamicObject on every iteration instead
-                    // disrupts Mattercraft's AttachmentPoint management and causes subsequent
-                    // objects to return null from getTrackedObject().
                     this.sceneContext.scene.updateMatrixWorld(true);
 
                     let initCount = 0;
