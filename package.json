@@ -1,6 +1,6 @@
 {
   "name": "@cognitive3d/three-mattercraft",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Seamlessly integrates the Cognitive3D WebXR SDK into Zappar's Mattercraft platform.",
   "keywords": [
     "xr",
