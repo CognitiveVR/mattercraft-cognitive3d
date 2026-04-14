@@ -32,6 +32,20 @@ export class Cognitive3DContext extends Context<Cognitive3DContextProps> {
         }
     }
 
+    public recordSensor(name: string, value: number | boolean): void {
+        if (!this.c3d || !this.c3d.isSessionActive()) return;
+        this.c3d.sensor.recordSensor(name, value);
+    }
+
+    public sendEvent(
+        category: string,
+        position: number[] = [0, 0, 0],
+        properties?: Record<string, any>
+    ): void {
+        if (!this.c3d || !this.c3d.isSessionActive()) return;
+        this.c3d.customEvent.send(category, position, properties);
+    }
+
     dispose() {
         this.c3d = null;
         this.c3dAdapter = null;
