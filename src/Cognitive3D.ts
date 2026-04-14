@@ -1,10 +1,13 @@
-import { Component, Behavior, ContextManager, useOnBeforeRender } from "@zcomponent/core";
+import { Component, Behavior, ContextManager, useOnBeforeRender, started } from "@zcomponent/core";
 import { XRContext } from "@zcomponent/three-webxr";
-import { ThreeContext, ThreeSceneContext } from "@zcomponent/three";
+import { ThreeContext, ThreeSceneContext, OnBeforeRenderPriority } from "@zcomponent/three";
 import * as THREE from "three";
 import { EditorContext } from "@zcomponent/three/lib/editorcontext";
 
 import C3D from "./vendor/c3d-bundle-threejs.umd.js";
+import { Cognitive3DContext, IDynamicObjectBehavior } from "./Cognitive3DContext";
+
+export { IDynamicObjectBehavior } from "./Cognitive3DContext";
 
 export interface Cognitive3DConstructionProps {
     /** @zui */
@@ -36,51 +39,34 @@ export interface Cognitive3DConstructionProps {
 
 }
 
-// Breaking the Circular Dependency: Define what the Manager expects
-export interface IDynamicObjectBehavior {
-    getTrackedObject(): THREE.Object3D | null;
-    getProps(): any;
-}
-
 /**
  * @zbehavior
  * @zdescription Cognitive3D Integration
+ * @ztag three/Object3D/Analytics/Cognitive3D
+ * @zparents three/Object3D/**
+ * @zicon analytics
  */
 export class Cognitive3D extends Behavior<Component> {
 
-    public static instance: Cognitive3D | null = null;
-    public static pendingRegistrations: IDynamicObjectBehavior[] = [];
-
-    /** Log a debug message. Only prints when enableDebug is toggled on. */
-    public static debug(...args: any[]): void {
-        if (Cognitive3D.instance?.constructorProps.enableDebug) {
-            console.log(...args);
-        }
-    }
-    public trackedBehaviors: Set<IDynamicObjectBehavior> = new Set();
-    private registeredWithSDK: Set<IDynamicObjectBehavior> = new Set();
+    private ctx: Cognitive3DContext;
 
     private c3d: any | null = null;
     private c3dAdapter: any = null;
     private xrContext: XRContext;
     private threeContext: ThreeContext;
     private sceneContext: ThreeSceneContext;
-
-    // Public getter so Cognitive3DDynamicObject can read the scene name
-    // for deterministic ID generation without accessing protected constructorProps.
-    public get sceneName(): string {
-        return this.constructorProps.sceneName;
-    }
+    private _xrSession: XRSession | null = null;
+    private _xrSessionEndHandler: (() => void) | null = null;
 
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DConstructionProps) {
         super(contextManager, instance);
 
-        // Assign Singleton
-        Cognitive3D.instance = this;
+        // Get or create the shared context
+        this.ctx = this.contextManager.get(Cognitive3DContext);
 
         // Pick up any behaviors constructed before the manager was ready
-        Cognitive3D.pendingRegistrations.forEach(b => this.trackedBehaviors.add(b));
-        Cognitive3D.pendingRegistrations = [];
+        this.ctx.pendingRegistrations.forEach(b => this.ctx.trackedBehaviors.add(b));
+        this.ctx.pendingRegistrations = [];
 
         this.threeContext = this.contextManager.get(ThreeContext);
         this.sceneContext = this.contextManager.get(ThreeSceneContext);
@@ -108,19 +94,29 @@ export class Cognitive3D extends Behavior<Component> {
             this.c3d.setDeviceProperty("AppEngine", "MatterCraft");
             this.c3d.setAppVersion(this.constructorProps.appVersion || "1.0");
 
+            // Publish SDK references into the shared context
+            this.ctx.c3d = this.c3d;
+            this.ctx.c3dAdapter = this.c3dAdapter;
+            this.ctx.sceneName = this.constructorProps.sceneName;
+            this.ctx.enableDebug = this.constructorProps.enableDebug;
+            this.ctx.registerDynamicObject = (b) => this.registerDynamicObject(b);
+
             if (this.xrContext) {
                 this.register(this.xrContext.currentSession, (session: XRSession | null) => {
                     this.handleSessionChange(session);
                 });
             }
 
-            // @ts-ignore: TypeScript overload resolution fails for Event<[number]> but this is correct at runtime
-            this.register(useOnBeforeRender(this.contextManager), () => {
-                if (this.c3dAdapter) {
-                    this.c3dAdapter.update();
-                }
-            });
-            
+            this.register(
+                useOnBeforeRender(this.contextManager),
+                (_dt: number) => {
+                    if (this.c3dAdapter) {
+                        this.c3dAdapter.update();
+                    }
+                },
+                OnBeforeRenderPriority.AfterTransforms
+            );
+
             window.addEventListener('keydown', this.handleKeyDown);
 
         } catch (err) {
@@ -130,14 +126,14 @@ export class Cognitive3D extends Behavior<Component> {
 
     public registerDynamicObject(behavior: IDynamicObjectBehavior) {
         // Add to the internal registry so we can re-initialize on session start
-        this.trackedBehaviors.add(behavior);
+        this.ctx.trackedBehaviors.add(behavior);
 
         if (!this.c3d || !this.c3dAdapter || !this.c3d.isSessionActive()) {
             return;
         }
 
         // Prevent double-registration with the C3D SDK
-        if (this.registeredWithSDK.has(behavior)) {
+        if (this.ctx.registeredWithSDK.has(behavior)) {
             return;
         }
 
@@ -166,13 +162,13 @@ export class Cognitive3D extends Behavior<Component> {
             objectName,
             meshName,
             customId,
-            [worldPos.x, worldPos.y, worldPos.z * -1], 
+            [worldPos.x, worldPos.y, worldPos.z * -1],
             [worldQuat.x, worldQuat.y, worldQuat.z * -1, worldQuat.w * -1],
             [worldScale.x, worldScale.y, worldScale.z]
         );
-        
+
         groupObj.userData.c3dId = runtimeId;
-        this.registeredWithSDK.add(behavior);
+        this.ctx.registeredWithSDK.add(behavior);
 
         this.c3dAdapter.trackDynamicObject(groupObj, runtimeId, {
             positionThreshold: props.positionThreshold,
@@ -189,53 +185,22 @@ export class Cognitive3D extends Behavior<Component> {
                         raycastTarget = node;
                     }
                 });
-                
+
                 if (raycastTarget !== groupObj) {
-                    Cognitive3D.debug(`Cognitive3D: Swapped empty tracker '${objectName}' for visual node in raycaster.`);
+                    this.ctx.debug(`Cognitive3D: Swapped empty tracker '${objectName}' for visual node in raycaster.`);
                 }
             }
 
             raycastTarget.userData.c3dId = runtimeId;
             this.c3dAdapter.addInteractable(raycastTarget);
-            Cognitive3D.debug(`Cognitive3D: Raycasting enabled for full object ${objectName}`);
+            this.ctx.debug(`Cognitive3D: Raycasting enabled for full object ${objectName}`);
         }
 
-        Cognitive3D.debug(`Cognitive3D: Dynamic Object Registered: ${objectName}`);
+        this.ctx.debug(`Cognitive3D: Dynamic Object Registered: ${objectName}`);
     }
 
     public unregisterDynamicObject(behavior: IDynamicObjectBehavior) {
-        this.trackedBehaviors.delete(behavior);
-    }
-
-    // ── Sensors & Events (static convenience API) ──────────────────────
-
-    /**
-     * Record a sensor value. Callable from any Behavior file:
-     *   import { Cognitive3D } from "@cognitive3d/three-mattercraft";
-     *   Cognitive3D.recordSensor("lever.rotation", degrees);
-     */
-    public static recordSensor(name: string, value: number | boolean): void {
-        const c3d = Cognitive3D.instance?.c3d;
-        if (!c3d || !c3d.isSessionActive()) {
-            return; // silently skip when no session is running
-        }
-        c3d.sensor.recordSensor(name, value);
-    }
-
-    /**
-     * Send a custom event with an optional 3D position and properties.
-     *   Cognitive3D.sendEvent("StepCompleted", [0, 0, 0], { step: 2 });
-     */
-    public static sendEvent(
-        category: string,
-        position: number[] = [0, 0, 0],
-        properties?: Record<string, any>
-    ): void {
-        const c3d = Cognitive3D.instance?.c3d;
-        if (!c3d || !c3d.isSessionActive()) {
-            return;
-        }
-        c3d.customEvent.send(category, position, properties);
+        this.ctx.trackedBehaviors.delete(behavior);
     }
 
     private hasGeometry(obj: THREE.Object3D): boolean {
@@ -253,24 +218,31 @@ export class Cognitive3D extends Behavior<Component> {
 
         if (session === null) {
             if (this.c3d.isSessionActive()) await this.c3d.endSession();
-            this.registeredWithSDK.clear();
+            this.ctx.registeredWithSDK.clear();
             return;
         }
 
         try {
             if (this.c3d.isSessionActive()) await this.c3d.endSession();
-            this.registeredWithSDK.clear();
+            this.ctx.registeredWithSDK.clear();
 
-            session.addEventListener("end", () => {
+            // Remove any stale "end" listener from the previous session
+            if (this._xrSession && this._xrSessionEndHandler) {
+                this._xrSession.removeEventListener("end", this._xrSessionEndHandler);
+            }
+
+            this._xrSessionEndHandler = () => {
                 if (this.c3d && this.c3d.isSessionActive()) this.c3d.endSession();
-                this.registeredWithSDK.clear();
-            });
+                this.ctx.registeredWithSDK.clear();
+            };
+            this._xrSession = session;
+            session.addEventListener("end", this._xrSessionEndHandler);
 
             const success = await this.c3d.startSession(session);
-            
+
             if (success) {
-                Cognitive3D.debug("Cognitive3D: Session Started");
-                
+                this.ctx.debug("Cognitive3D: Session Started");
+
                 const renderer = this.threeContext.renderer as THREE.WebGLRenderer;
                 const scene = this.sceneContext.scene;
                 const trackingCamera = this.sceneContext.activeCamera.value;
@@ -280,25 +252,17 @@ export class Cognitive3D extends Behavior<Component> {
                     this.c3dAdapter?.startTracking(renderer, trackingCamera as THREE.Camera, scene);
                 }
 
-                setTimeout(() => {
-                    // NOTE: Call updateMatrixWorld once before the loop so all animated
-                    // bone transforms (e.g. forklift forks/hydraulics) reflect their actual
-                    // current pose rather than the GLTF bind/rest pose. The AnimationMixer
-                    // writes bone transforms during the render loop, which hasn't run yet
-                    // inside this setTimeout — a single full scene update corrects this.
-                    // Calling it inside registerDynamicObject on every iteration instead
-                    // disrupts Mattercraft's AttachmentPoint management and causes subsequent
-                    // objects to return null from getTrackedObject().
+                started(this.contextManager).then(() => {
                     this.sceneContext.scene.updateMatrixWorld(true);
 
                     let initCount = 0;
-                    this.trackedBehaviors.forEach(behavior => {
+                    this.ctx.trackedBehaviors.forEach(behavior => {
                          this.registerDynamicObject(behavior);
                          initCount++;
                     });
-                    
-                    Cognitive3D.debug(`Cognitive3D: Force-registered ${initCount} existing dynamic objects after layout sync.`);
-                }, 60); 
+
+                    this.ctx.debug(`Cognitive3D: Force-registered ${initCount} existing dynamic objects after layout sync.`);
+                });
             }
         } catch (err) {
             console.error("Cognitive3D: Error starting session", err);
@@ -309,7 +273,7 @@ export class Cognitive3D extends Behavior<Component> {
         if (!this.constructorProps.enableExport) {
             return;
         }
-        
+
         if (event.shiftKey && (event.key === 'E' || event.key === 'e')) {
             this.exportScene();
         }
@@ -332,10 +296,10 @@ export class Cognitive3D extends Behavior<Component> {
             return;
         }
 
-        Cognitive3D.debug(`Cognitive3D: Checking ${this.trackedBehaviors.size} Dynamic Objects for export...`);
-        
+        this.ctx.debug(`Cognitive3D: Checking ${this.ctx.trackedBehaviors.size} Dynamic Objects for export...`);
+
         const dynamicNames = new Set<string>();
-        for (const behavior of Array.from(this.trackedBehaviors)) {
+        for (const behavior of Array.from(this.ctx.trackedBehaviors)) {
             const wrapper = behavior.getTrackedObject();
             const props = behavior.getProps();
             if (wrapper) {
@@ -346,24 +310,24 @@ export class Cognitive3D extends Behavior<Component> {
 
         const exportedMeshes = new Set<string>();
 
-        for (const behavior of Array.from(this.trackedBehaviors)) {
+        for (const behavior of Array.from(this.ctx.trackedBehaviors)) {
             const wrapper = behavior.getTrackedObject();
             const props = behavior.getProps();
-            
+
             if (wrapper) {
                 const fallbackName = wrapper.name || "UnnamedObject";
                 const exportName = props.c3dMeshName || fallbackName;
 
                 if (exportedMeshes.has(exportName)) {
-                    Cognitive3D.debug(`Cognitive3D: Skipping duplicate Dynamic Object export: '${exportName}'`);
-                    continue; 
+                    this.ctx.debug(`Cognitive3D: Skipping duplicate Dynamic Object export: '${exportName}'`);
+                    continue;
                 }
 
                 exportedMeshes.add(exportName);
 
-                Cognitive3D.debug("------------------------------------------------");
-                Cognitive3D.debug(`Cognitive3D: Exporting Dynamic Object: '${exportName}'`);
-                Cognitive3D.debug("------------------------------------------------");
+                this.ctx.debug("------------------------------------------------");
+                this.ctx.debug(`Cognitive3D: Exporting Dynamic Object: '${exportName}'`);
+                this.ctx.debug("------------------------------------------------");
 
                 let objToExport = wrapper.clone();
 
@@ -375,10 +339,10 @@ export class Cognitive3D extends Behavior<Component> {
                             foundVisualNode = node;
                         }
                     });
-                    
+
                     if (foundVisualNode as any) {
                         objToExport = (foundVisualNode as any).clone();
-                        Cognitive3D.debug(`Cognitive3D: Found actual visual geometry for '${exportName}' in scene.`);
+                        this.ctx.debug(`Cognitive3D: Found actual visual geometry for '${exportName}' in scene.`);
                     } else {
                         console.warn(`Cognitive3D: Could not find visual geometry for '${exportName}'. Exporting as empty group.`);
                     }
@@ -411,7 +375,7 @@ export class Cognitive3D extends Behavior<Component> {
 
                 if (typeof this.c3dAdapter.exportObject === 'function') {
                     await this.c3dAdapter.exportObject(
-                        exportRoot, 
+                        exportRoot,
                         exportName,
                         renderer as THREE.WebGLRenderer,
                         camera
@@ -422,7 +386,7 @@ export class Cognitive3D extends Behavior<Component> {
             }
         }
     }
-    
+
     private exportScene() {
         if (!this.c3dAdapter) return;
         const renderer = this.threeContext.renderer as THREE.WebGLRenderer;
@@ -434,18 +398,18 @@ export class Cognitive3D extends Behavior<Component> {
             const editorContext = this.contextManager.get(EditorContext);
             if (editorContext && editorContext.orbitControls.value) {
                 camera = editorContext.orbitControls.value.object as THREE.Camera;
-                Cognitive3D.debug("Cognitive3D: Using Editor camera for export.");
+                this.ctx.debug("Cognitive3D: Using Editor camera for export.");
             }
         } catch (e) {
-            Cognitive3D.debug("Cognitive3D: Editor environment not found, using active camera.");
+            this.ctx.debug("Cognitive3D: Editor environment not found, using active camera.");
         }
 
         if (renderer && scene && camera) {
-            Cognitive3D.debug("Cognitive3D: Exporting Scene...");
+            this.ctx.debug("Cognitive3D: Exporting Scene...");
 
             // 2. Temporarily strip C3D userData from the entire scene.
             const strippedUserData: { obj: THREE.Object3D, isDynamic?: boolean, c3dId?: string }[] = [];
-            
+
             scene.traverse((obj) => {
                 if (obj.userData && (obj.userData.c3dId !== undefined || obj.userData.isDynamic !== undefined)) {
                     strippedUserData.push({
@@ -453,7 +417,7 @@ export class Cognitive3D extends Behavior<Component> {
                         isDynamic: obj.userData.isDynamic,
                         c3dId: obj.userData.c3dId
                     });
-                    
+
                     delete obj.userData.isDynamic;
                     delete obj.userData.c3dId;
                 }
@@ -461,8 +425,8 @@ export class Cognitive3D extends Behavior<Component> {
 
             // 3. Hide dynamic object roots so the GLTFExporter explicitly ignores them
             const hiddenObjects: { obj: THREE.Object3D, originalVisibility: boolean }[] = [];
-            
-            this.trackedBehaviors.forEach(behavior => {
+
+            this.ctx.trackedBehaviors.forEach(behavior => {
                 const obj = behavior.getTrackedObject();
                 if (obj) {
                     hiddenObjects.push({ obj, originalVisibility: obj.visible });
@@ -473,7 +437,7 @@ export class Cognitive3D extends Behavior<Component> {
             // 4. FORCE RENDER: Draw the scene to the buffer right before export to prevent blank screenshots
             renderer.render(scene, camera);
 
-            // 5. Export Scene 
+            // 5. Export Scene
             const exportName = this.constructorProps.sceneName || "Unnamed-MatterCraft-Scene";
             this.c3dAdapter.exportScene(scene, exportName, renderer, camera);
 
@@ -486,8 +450,30 @@ export class Cognitive3D extends Behavior<Component> {
                 if (isDynamic !== undefined) obj.userData.isDynamic = isDynamic;
                 if (c3dId !== undefined) obj.userData.c3dId = c3dId;
             });
-            
-            Cognitive3D.debug(`Cognitive3D: Scene '${exportName}' Exported & Dynamic Objects Restored.`);
+
+            this.ctx.debug(`Cognitive3D: Scene '${exportName}' Exported & Dynamic Objects Restored.`);
         }
+    }
+
+    public override dispose() {
+        window.removeEventListener('keydown', this.handleKeyDown);
+
+        if (this._xrSession && this._xrSessionEndHandler) {
+            this._xrSession.removeEventListener("end", this._xrSessionEndHandler);
+        }
+
+        if (this.c3d && this.c3d.isSessionActive()) {
+            this.c3d.endSession();
+        }
+
+        this.c3d = null;
+        this.c3dAdapter = null;
+        this.ctx.c3d = null;
+        this.ctx.c3dAdapter = null;
+        this.ctx.registerDynamicObject = null;
+        this.ctx.trackedBehaviors.clear();
+        this.ctx.registeredWithSDK.clear();
+
+        return super.dispose();
     }
 }
