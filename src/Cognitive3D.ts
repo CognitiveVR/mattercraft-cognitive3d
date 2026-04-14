@@ -203,40 +203,6 @@ export class Cognitive3D extends Behavior<Component> {
         this.ctx.trackedBehaviors.delete(behavior);
     }
 
-    // ── Sensors & Events (static convenience API) ──────────────────────
-
-    /**
-     * Record a sensor value. Callable from any Behavior file:
-     *   import { Cognitive3D } from "@cognitive3d/three-mattercraft";
-     *   Cognitive3D.recordSensor("lever.rotation", degrees, contextManager);
-     */
-    public static recordSensor(name: string, value: number | boolean, contextManager: ContextManager): void {
-        const ctx = contextManager.getExisting(Cognitive3DContext);
-        const c3d = ctx?.c3d;
-        if (!c3d || !c3d.isSessionActive()) {
-            return; // silently skip when no session is running
-        }
-        c3d.sensor.recordSensor(name, value);
-    }
-
-    /**
-     * Send a custom event with an optional 3D position and properties.
-     *   Cognitive3D.sendEvent("StepCompleted", [0, 0, 0], { step: 2 }, contextManager);
-     */
-    public static sendEvent(
-        category: string,
-        position: number[] = [0, 0, 0],
-        properties: Record<string, any> | undefined,
-        contextManager: ContextManager
-    ): void {
-        const ctx = contextManager.getExisting(Cognitive3DContext);
-        const c3d = ctx?.c3d;
-        if (!c3d || !c3d.isSessionActive()) {
-            return;
-        }
-        c3d.customEvent.send(category, position, properties);
-    }
-
     private hasGeometry(obj: THREE.Object3D): boolean {
         let hasGeom = false;
         obj.traverse((child) => {
