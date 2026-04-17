@@ -75,17 +75,15 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
     }
 
     /**
-     * Generates a stable, deterministic ID namespaced by scene name and keyed
-     * on the mesh name. Mesh names must already be unique per tracked object for
-     * the Cognitive3D dashboard to distinguish objects, making them a reliable
-     * stable hash input.
+     * Generates a stable, deterministic ID namespaced by scene name, keyed on
+     * the mesh name, and disambiguated by the per-instance ZComponent entity
+     * path and world position.
      *
-     * The parent-chain approach was avoided because Mattercraft AttachmentPoints
-     * frequently have no name on themselves or their ancestors, causing all
-     * unnamed objects to produce the same path string and identical IDs.
-     *
-     * Falls back to obj.uuid when no mesh name is available. This is unique
-     * within a session but not persistent across page reloads.
+     * When the same ZComponent is placed multiple times in a scene all instances
+     * share the same c3dMeshName, so the hash must include something that varies
+     * per placement. Walking the ZComponent parent chain via idByElement gives
+     * the outer entity IDs (unique per placement in the parent scene). World
+     * position is appended as a tiebreaker for use outside a ZComponent.
      *
      * The inspector value always takes priority — this only runs when
      * c3dCustomId is left blank.
@@ -97,17 +95,17 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
             return s;
         };
 
-        // Namespace by scene name so the same mesh name in different scenes
-        // does not collide on the Cognitive3D dashboard.
         const sceneName = this.ctx.sceneName || 'scene';
-        const uniqueKey = meshName || obj.uuid;
-        const fullKey = sceneName + '::' + uniqueKey;
+        const instancePath = this._collectInstancePath().join('/');
+        const posKey = this._positionFingerprint(obj);
+        const uniqueKey = (instancePath || obj.uuid) + '|' + posKey;
+        const fullKey = sceneName + '::' + meshName + '::' + uniqueKey;
 
         // djb2 hash — simple, fast, good distribution for short strings.
         const djb2 = (input: string): number => {
             let h = 5381;
             for (let i = 0; i < input.length; i++) {
-                h = Math.imul((h << 5) + h, 1) + input.charCodeAt(i);
+                h = Math.imul(h, 33) + input.charCodeAt(i);
                 h = h | 0;
             }
             return h >>> 0;
@@ -118,6 +116,47 @@ export class Cognitive3DDynamicObject extends Behavior<Component> implements IDy
         const keyLen   = pad(fullKey.length.toString(16), 4);
 
         return 'c3d-' + keyHash + '-' + nameHash + '-' + keyLen;
+    }
+
+    /**
+     * Walks the ZComponent parent chain and collects the node IDs that each
+     * ancestor is registered under in its owning ZComponent. For a behavior
+     * entity placed inside a nested ZComponent, this produces a path containing
+     * both the inner template-scoped ID (same for every instance) and the outer
+     * placement ID (unique per instance in the parent scene). Joining them with
+     * '/' gives a string that differs for each distinct placement.
+     */
+    private _collectInstancePath(): string[] {
+        const path: string[] = [];
+        const seen = new Set<string>();
+        // @ts-ignore — .parent is not in public typedefs but exists at runtime
+        let current: any = this.instance;
+        while (current) {
+            try {
+                const zc = current.getZComponentInstance?.();
+                if (zc?.idByElement && current.element) {
+                    const entityId = zc.idByElement.get(current.element);
+                    if (entityId && !seen.has(entityId)) {
+                        seen.add(entityId);
+                        path.push(entityId);
+                    }
+                }
+            } catch (_) { /* keep walking */ }
+            current = current.parent;
+        }
+        return path;
+    }
+
+    /**
+     * Returns a deterministic world-position string rounded to 3 decimal places.
+     * Used as a tiebreaker when _collectInstancePath returns nothing.
+     */
+    private _positionFingerprint(obj: THREE.Object3D): string {
+        obj.updateWorldMatrix(true, false);
+        const p = new THREE.Vector3();
+        obj.getWorldPosition(p);
+        const round = (n: number) => (Math.round(n * 1000) / 1000).toFixed(3);
+        return round(p.x) + ',' + round(p.y) + ',' + round(p.z);
     }
 
     public getTrackedObject(): THREE.Object3D | null {
