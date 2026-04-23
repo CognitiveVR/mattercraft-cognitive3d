@@ -238,6 +238,15 @@ export class Cognitive3D extends Behavior<Component> {
             this._xrSession = session;
             session.addEventListener("end", this._xrSessionEndHandler);
 
+            started(this.contextManager).then(() => this._startC3DSession(session));
+        } catch (err) {
+            console.error("Cognitive3D: Error during session setup", err);
+        }
+    }
+
+    private async _startC3DSession(session: XRSession) {
+        if (!this.c3d) return;
+        try {
             const success = await this.c3d.startSession(session);
 
             if (success) {
@@ -252,17 +261,13 @@ export class Cognitive3D extends Behavior<Component> {
                     this.c3dAdapter?.startTracking(renderer, trackingCamera as THREE.Camera, scene);
                 }
 
-                started(this.contextManager).then(() => {
-                    this.sceneContext.scene.updateMatrixWorld(true);
-
-                    let initCount = 0;
-                    this.ctx.trackedBehaviors.forEach(behavior => {
-                         this.registerDynamicObject(behavior);
-                         initCount++;
-                    });
-
-                    this.ctx.debug(`Cognitive3D: Force-registered ${initCount} existing dynamic objects after layout sync.`);
+                this.sceneContext.scene.updateMatrixWorld(true);
+                let initCount = 0;
+                this.ctx.trackedBehaviors.forEach(behavior => {
+                    this.registerDynamicObject(behavior);
+                    initCount++;
                 });
+                this.ctx.debug(`Cognitive3D: Registered ${initCount} dynamic objects.`);
             }
         } catch (err) {
             console.error("Cognitive3D: Error starting session", err);
