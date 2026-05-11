@@ -247,19 +247,19 @@ export class Cognitive3D extends Behavior<Component> {
     private async _startC3DSession(session: XRSession) {
         if (!this.c3d) return;
         try {
+            const renderer = this.threeContext.renderer as THREE.WebGLRenderer;
+            const scene = this.sceneContext.scene;
+            const trackingCamera = this.sceneContext.activeCamera.value;
+
+            if (renderer && trackingCamera) {
+                (this.c3d as any).config.gazeTrackingSource = "engine";
+                this.c3dAdapter?.startTracking(renderer, trackingCamera as THREE.Camera, scene);
+            }
+
             const success = await this.c3d.startSession(session);
 
             if (success) {
-                this.ctx.debug("Cognitive3D: Session Started");
-
-                const renderer = this.threeContext.renderer as THREE.WebGLRenderer;
-                const scene = this.sceneContext.scene;
-                const trackingCamera = this.sceneContext.activeCamera.value;
-
-                if (renderer && trackingCamera) {
-                    (this.c3d as any).config.gazeTrackingSource = "engine";
-                    this.c3dAdapter?.startTracking(renderer, trackingCamera as THREE.Camera, scene);
-                }
+                this.ctx.debug("Cognitive3D: Session Started (" + (((session as any).mode) || "unknown") + ")");
 
                 this.sceneContext.scene.updateMatrixWorld(true);
                 let initCount = 0;
