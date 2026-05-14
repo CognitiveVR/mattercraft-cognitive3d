@@ -31,21 +31,20 @@ export interface Cognitive3DConstructionProps {
      **/
     sceneVersion?: string;
     /**
+     * Your application’s version string (default: 1.0)
      * @zui
-     * @zlabel Your application’s version string (default: 1.0)
      * @zdefault "1.0"
      */
     appVersion: string;
     /**
+     * Toggle to enable scene and dynamic object export at runtime
      * @zui
-     * @zlabel Toggle to enable scene and dynamic object export at runtime
      * @zdefault false
      */
     enableExport: boolean;
     /**
      * Toggle to enable verbose debug logging in the browser console
      * @zui
-     * @zlabel Enable Debug Logging
      * @zdefault false
      */
     enableDebug: boolean;

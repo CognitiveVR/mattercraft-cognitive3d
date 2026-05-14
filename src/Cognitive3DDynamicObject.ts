@@ -10,14 +10,14 @@ const _vec = new THREE.Vector3();
 
 export interface Cognitive3DDynamicObjectConstructionProps {
     /**
+     * Model Mesh Name (must match the uploaded object mesh name of Cognitive3d Dashboard)
      * @zui
-     * @zlabel Model Mesh Name (must match the uploaded object mesh name of Cognitive3d Dashboard)
      */
     c3dMeshName?: string;
 
     /**
+     * Custom ID (must be unique for each object)
      * @zui
-     * @zlabel Custom ID (must be unique for each object)
      */
     c3dCustomId?: string;
 
