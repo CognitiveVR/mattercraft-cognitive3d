@@ -10,27 +10,40 @@ import { Cognitive3DContext, IDynamicObjectBehavior } from "./Cognitive3DContext
 export { IDynamicObjectBehavior } from "./Cognitive3DContext";
 
 export interface Cognitive3DConstructionProps {
-    /** @zui */
+    /**
+     * Your Cognitive3D Application Key (not the Developer Key)
+     * @zui
+     **/
     apiKey: string;
-    /** @zui */
+    /**
+     * The ID of your scene on the Cognitive3D dashboard
+     * @zui
+     **/
     sceneId: string;
-    /** @zui */
+    /**
+     * The name of your scene
+     * @zui
+     **/
     sceneName: string;
-    /** @zui */
+    /**
+     * The version number of your uploaded scene
+     * @zui
+     **/
     sceneVersion?: string;
     /**
      * @zui
-     * @zlabel App Version
+     * @zlabel Your application’s version string (default: 1.0)
      * @zdefault "1.0"
      */
     appVersion: string;
     /**
      * @zui
-     * @zlabel Toggle Export
+     * @zlabel Toggle to enable scene and dynamic object export at runtime
      * @zdefault false
      */
     enableExport: boolean;
     /**
+     * Toggle to enable verbose debug logging in the browser console
      * @zui
      * @zlabel Enable Debug Logging
      * @zdefault false
