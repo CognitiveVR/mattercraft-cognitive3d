@@ -36,6 +36,42 @@ export interface Cognitive3DConstructionProps {
      * @zdefault false
      */
     enableDebug: boolean;
+    /**
+     * @zui
+     * @zlabel Enable Room Capture
+     * @zdefault true
+     */
+    enableRoomCapture: boolean;
+    /**
+     * @zui
+     * @zlabel Room Data Limit
+     * @zdefault 64
+     */
+    roomDataLimit: number;
+    /**
+     * @zui
+     * @zlabel Enable Fixations
+     * @zdefault true
+     */
+    enableFixations: boolean;
+    /**
+     * @zui
+     * @zlabel Allow Fixations Without Eye Tracking
+     * @zdefault false
+     */
+    allowFixationWithoutEyeTracking: boolean;
+    /**
+     * @zui
+     * @zlabel Fixation Data Limit
+     * @zdefault 256
+     */
+    fixationDataLimit: number;
+    /**
+     * @zui
+     * @zlabel Fetch Remote Variables
+     * @zdefault true
+     */
+    autoFetchRemoteVariables: boolean;
 
 }
 
@@ -57,6 +93,8 @@ export class Cognitive3D extends Behavior<Component> {
     private sceneContext: ThreeSceneContext;
     private _xrSession: XRSession | null = null;
     private _xrSessionEndHandler: (() => void) | null = null;
+    private _originalRequestSession: ((mode: any, init?: any) => Promise<XRSession>) | null = null;
+    private _remoteVariablesHandler: (() => void) | null = null;
 
     constructor(contextManager: ContextManager, instance: Component, protected constructorProps: Cognitive3DConstructionProps) {
         super(contextManager, instance);
@@ -78,6 +116,12 @@ export class Cognitive3D extends Behavior<Component> {
                     APIKey: this.constructorProps.apiKey,
                     LOG: this.constructorProps.enableDebug,
                     gazeTrackingSource: "engine",
+                    enableRoomCapture: this.constructorProps.enableRoomCapture !== false,
+                    roomDataLimit: this.constructorProps.roomDataLimit || 64,
+                    enableFixation: this.constructorProps.enableFixations !== false,
+                    allowFixationWithoutEyeTracking: this.constructorProps.allowFixationWithoutEyeTracking === true,
+                    fixationDataLimit: this.constructorProps.fixationDataLimit || 256,
+                    autoFetchRemoteVariables: this.constructorProps.autoFetchRemoteVariables !== false,
                     allSceneData: [{
                         sceneId: this.constructorProps.sceneId,
                         sceneName: this.constructorProps.sceneName,
@@ -99,6 +143,12 @@ export class Cognitive3D extends Behavior<Component> {
             this.ctx.c3dAdapter = this.c3dAdapter;
             this.ctx.sceneName = this.constructorProps.sceneName;
             this.ctx.enableDebug = this.constructorProps.enableDebug;
+            this.ctx.roomCaptureEnabled = this.constructorProps.enableRoomCapture !== false;
+            this.ctx.fixationsEnabled = this.constructorProps.enableFixations !== false;
+
+            if (this.ctx.roomCaptureEnabled) {
+                this.installGeometryFeatures();
+            }
             this.ctx.registerDynamicObject = (b) => this.registerDynamicObject(b);
 
             if (this.xrContext) {
@@ -121,6 +171,61 @@ export class Cognitive3D extends Behavior<Component> {
 
         } catch (err) {
             console.error("Cognitive3D: Init Failed", err);
+        }
+    }
+
+    private installGeometryFeatures() {
+        const xr = (navigator as any).xr;
+        if (!xr || typeof xr.requestSession !== "function" || this._originalRequestSession) {
+            return;
+        }
+        const original = xr.requestSession.bind(xr);
+        this._originalRequestSession = original;
+        xr.requestSession = (mode: any, init?: any) => {
+            const next = Object.assign({}, init || {});
+            const features = Array.isArray(next.optionalFeatures) ? next.optionalFeatures.slice() : [];
+            ["plane-detection", "mesh-detection"].forEach(feature => {
+                if (features.indexOf(feature) === -1) features.push(feature);
+            });
+            next.optionalFeatures = features;
+            return original(mode, next);
+        };
+    }
+
+    private removeGeometryFeatures() {
+        const xr = (navigator as any).xr;
+        if (xr && this._originalRequestSession) {
+            xr.requestSession = this._originalRequestSession;
+        }
+        this._originalRequestSession = null;
+    }
+
+    private setupRemoteVariables() {
+        const remote = this.c3d && this.c3d.remoteVariables;
+        if (!remote || typeof remote.onRemoteVariablesAvailable !== "function") {
+            return;
+        }
+
+        if (this._remoteVariablesHandler && typeof remote.offRemoteVariablesAvailable === "function") {
+            remote.offRemoteVariablesAvailable(this._remoteVariablesHandler);
+        }
+
+        this._remoteVariablesHandler = () => {
+            this.ctx.remoteVariablesReady = true;
+            this.ctx.debug(`Cognitive3D: ${this.ctx.listRemoteVariables().length} remote variables available.`);
+            this.ctx.onRemoteVariablesAvailable.emit();
+        };
+
+        remote.onRemoteVariablesAvailable(this._remoteVariablesHandler);
+    }
+
+    private reportGeometryFeatures(session: XRSession) {
+        const granted = (session as any).enabledFeatures ? Array.from((session as any).enabledFeatures) : [];
+        const hasPlanes = granted.indexOf("plane-detection") !== -1;
+        const hasMeshes = granted.indexOf("mesh-detection") !== -1;
+        this.ctx.debug(`Cognitive3D: plane-detection ${hasPlanes ? "granted" : "unavailable"}, mesh-detection ${hasMeshes ? "granted" : "unavailable"}.`);
+        if (this.ctx.roomCaptureEnabled && !hasPlanes && !hasMeshes) {
+            console.warn("Cognitive3D: Room Capture is enabled but the runtime granted no geometry features. On Quest this requires an immersive-ar session and a completed Space Setup.");
         }
     }
 
@@ -251,6 +356,8 @@ export class Cognitive3D extends Behavior<Component> {
 
             if (success) {
                 this.ctx.debug("Cognitive3D: Session Started");
+                this.reportGeometryFeatures(session);
+                this.setupRemoteVariables();
 
                 const renderer = this.threeContext.renderer as THREE.WebGLRenderer;
                 const scene = this.sceneContext.scene;
@@ -463,6 +570,14 @@ export class Cognitive3D extends Behavior<Component> {
     public override dispose() {
         window.removeEventListener('keydown', this.handleKeyDown);
 
+        this.removeGeometryFeatures();
+
+        const remote = this.c3d && this.c3d.remoteVariables;
+        if (remote && this._remoteVariablesHandler && typeof remote.offRemoteVariablesAvailable === "function") {
+            remote.offRemoteVariablesAvailable(this._remoteVariablesHandler);
+        }
+        this._remoteVariablesHandler = null;
+
         if (this._xrSession && this._xrSessionEndHandler) {
             this._xrSession.removeEventListener("end", this._xrSessionEndHandler);
         }
@@ -478,6 +593,7 @@ export class Cognitive3D extends Behavior<Component> {
         this.ctx.registerDynamicObject = null;
         this.ctx.trackedBehaviors.clear();
         this.ctx.registeredWithSDK.clear();
+        this.ctx.remoteVariablesReady = false;
 
         return super.dispose();
     }
